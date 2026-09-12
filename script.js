@@ -41,19 +41,25 @@ let thinkingMode = 'fast';
 document.getElementById('mode-toggle').addEventListener('click', (e) => {
   const btn = e.target.closest('.mode-btn');
   if(!btn) return;
-  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#mode-toggle .mode-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   thinkingMode = btn.dataset.mode;
+});
+
+let searchEnabled = false;
+document.getElementById('search-toggle').addEventListener('click', (e) => {
+  searchEnabled = !searchEnabled;
+  e.target.classList.toggle('active', searchEnabled);
 });
 
 // ---------- streaming API call ----------
 // Streams the reply and calls onChunk(partialTextSoFar) as it arrives.
 // Resolves with the full final text once the stream ends.
-async function streamAgent(messages, system = SYSTEM_PROMPT, onChunk = null, mode = null){
+async function streamAgent(messages, system = SYSTEM_PROMPT, onChunk = null, mode = null, search = null){
   const res = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, system, mode: mode || thinkingMode })
+    body: JSON.stringify({ messages, system, mode: mode || thinkingMode, search: search !== null ? search : searchEnabled })
   });
 
   if(!res.ok){
@@ -77,10 +83,10 @@ async function streamAgent(messages, system = SYSTEM_PROMPT, onChunk = null, mod
       const trimmed = line.trim();
       if(!trimmed.startsWith('data:')) continue;
       const jsonStr = trimmed.slice(5).trim();
-      if(!jsonStr) continue;
+      if(!jsonStr || jsonStr === '[DONE]') continue;
       try{
         const parsed = JSON.parse(jsonStr);
-        const piece = parsed.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
+        const piece = parsed.choices?.[0]?.delta?.content || '';
         if(piece){
           fullText += piece;
           if(onChunk) onChunk(fullText);
@@ -220,7 +226,7 @@ async function generateDigest(kind){
   try{
     await streamAgent([{ role: 'user', content: prompt }], SYSTEM_PROMPT, (partial) => {
       digestOutput.innerHTML = renderMarkdown(partial);
-    }, 'deep');
+    }, 'deep', true);
   }catch(err){
     digestOutput.innerHTML = `<p class="empty-state">${err.message}</p>`;
   }finally{
@@ -356,4 +362,5 @@ function renderSaved(){
     item.appendChild(body);
     list.appendChild(item);
   });
-}
+                      }
+
