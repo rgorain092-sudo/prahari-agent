@@ -27,7 +27,10 @@ module.exports = async (req, res) => {
         body: JSON.stringify({
           system_instruction: { parts: [{ text: system }] },
           contents,
-          generationConfig: { maxOutputTokens: 8192 }
+          generationConfig: {
+            maxOutputTokens: 8192,
+            thinkingConfig: { thinkingLevel: 'low' }
+          }
         })
       }
     );
