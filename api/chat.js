@@ -1,119 +1,97 @@
-// Serverless function (Vercel). Gemini 3.8 Flash with LIVE WEB SEARCH.
-// Fixes the 'type' parameter error by using the correct tool format.
-
-const GEMINI_MODEL = 'gemini-3.8-flash';
-const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
-
-// Gemini 3.8 Flash supports only these thinking levels.
-const THINKING_LEVELS = {
-  deep: 'high',
-  normal: 'medium',
-  fast: 'low',
-};
-
-const MAX_BODY_BYTES = 1024 * 200;
-
-export const config = {
-  maxDuration: 60,
-};
-
+// Serverless function (Vercel). Uses Groq for the actual answer, and
+// optionally Tavily (a free web-search API) to fetch live results first
+// so answers can be grounded in current information.
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
-    return res.status(405).json({ error: 'Method not allowed' });
+    res.status(405).json({ error: 'Method not allowed' });
+    return;
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: 'Server is missing GEMINI_API_KEY.' });
+  if (!process.env.GROQ_API_KEY) {
+    res.status(500).json({ error: 'Server is missing GROQ_API_KEY. Add it in your hosting dashboard under Environment Variables.' });
+    return;
   }
-
-  let body;
-  try {
-    body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-  } catch {
-    return res.status(400).json({ error: 'Invalid JSON body' });
-  }
-
-  const { messages, system, mode } = body || {};
-
-  if (!Array.isArray(messages) || messages.length === 0) {
-    return res.status(400).json({ error: '`messages` must be a non-empty array' });
-  }
-
-  const contents = messages
-    .filter((m) => m && typeof m.content === 'string' && m.content.trim())
-    .map((m) => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }],
-    }));
-
-  if (contents.length === 0) {
-    return res.status(400).json({ error: 'No valid messages to send' });
-  }
-
-  const thinkingLevel = THINKING_LEVELS[mode] || THINKING_LEVELS.normal;
-
-  // ⚠️ KEY FIX: The format for the google_search tool.
-  // The correct format is: tools: [{ google_search: {} }]
-  // This enables live web search grounding.
-  const payload = {
-    contents,
-    generationConfig: {
-      maxOutputTokens: 8192,
-      thinkingConfig: { thinkingLevel },
-    },
-    tools: [{ google_search: {} }],
-  };
-
-  if (typeof system === 'string' && system.trim()) {
-    payload.system_instruction = { parts: [{ text: system }] };
-  }
-
-  let upstream;
-  try {
-    upstream = await fetch(
-      `${GEMINI_BASE}/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal: req.signal,
-      }
-    );
-  } catch (err) {
-    if (err.name === 'AbortError') return;
-    return res.status(502).json({ error: `Upstream fetch failed: ${err.message}` });
-  }
-
-  if (!upstream.ok || !upstream.body) {
-    const errData = await upstream.json().catch(() => ({}));
-    return res.status(upstream.status || 502).json({
-      error: errData?.error?.message || 'Gemini API error',
-    });
-  }
-
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream; charset=utf-8',
-    'Cache-Control': 'no-cache, no-transform',
-    Connection: 'keep-alive',
-    'X-Accel-Buffering': 'no',
-  });
-
-  const onClose = () => upstream.body.cancel().catch(() => {});
-  req.on('close', onClose);
 
   try {
-    for await (const chunk of upstream.body) {
-      if (res.writableEnded) break;
-      if (!res.write(chunk)) {
-        await new Promise((resolve) => res.once('drain', resolve));
+    const { messages, system, mode, search } = req.body;
+
+    let effectiveSystem = system;
+
+    // Optional live web search step (Tavily) before answering
+    if (search && process.env.TAVILY_API_KEY) {
+      const lastUserMsg = [...(messages || [])].reverse().find(m => m.role === 'user');
+      if (lastUserMsg) {
+        try {
+          const tavilyRes = await fetch('https://api.tavily.com/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              api_key: process.env.TAVILY_API_KEY,
+              query: lastUserMsg.content,
+              search_depth: 'basic',
+              max_results: 6,
+              topic: 'news'
+            })
+          });
+          if (tavilyRes.ok) {
+            const tavilyData = await tavilyRes.json();
+            const results = tavilyData.results || [];
+            if (results.length) {
+              const searchContext = results
+                .map((r, i) => `${i + 1}. ${r.title} — ${(r.content || '').slice(0, 350)} (Source: ${r.url})`)
+                .join('\n\n');
+              effectiveSystem = `${system}\n\nLIVE WEB SEARCH RESULTS (use these for anything current/factual; cite sources briefly where relevant):\n\n${searchContext}`;
+            }
+          }
+        } catch (searchErr) {
+          // Search failing shouldn't block the answer — just proceed without it
+        }
       }
     }
+
+    const model = mode === 'deep' ? 'llama-3.3-70b-versatile' : 'llama-3.1-8b-instant';
+
+    const chatMessages = [
+      { role: 'system', content: effectiveSystem },
+      ...(messages || []).map(m => ({ role: m.role, content: m.content }))
+    ];
+
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.GROQ_API_KEY}`
+      },
+      body: JSON.stringify({
+        model,
+        messages: chatMessages,
+        stream: true,
+        max_tokens: 8192
+      })
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      res.status(response.status).json({ error: errData.error?.message || 'Groq API error' });
+      return;
+    }
+
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive'
+    });
+
+    for await (const chunk of response.body) {
+      res.write(chunk);
+    }
+    res.end();
   } catch (err) {
-    if (err.name !== 'AbortError') console.error('Stream relay error:', err);
-  } finally {
-    req.off('close', onClose);
-    if (!res.writableEnded) res.end();
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message || 'Unexpected server error' });
+    } else {
+      res.end();
+    }
   }
 };
+                
