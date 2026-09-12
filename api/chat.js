@@ -29,7 +29,7 @@ module.exports = async (req, res) => {
           contents,
           generationConfig: {
             maxOutputTokens: 8192,
-            thinkingConfig: { thinkingLevel: 'low' }
+            thinkingConfig: { thinkingLevel: 'minimal' }
           }
         })
       }
@@ -60,3 +60,4 @@ module.exports = async (req, res) => {
     }
   }
 };
+                            
