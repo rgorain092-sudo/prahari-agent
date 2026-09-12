@@ -1,49 +1,55 @@
-# Prahari — Your Standalone Study Agent (Free Version)
+# Prahari — Your Standalone Study Agent (Groq-powered)
 
-A study agent web app for UPSC, SSC CHSL, and BA English prep — chat, a
-current-affairs digest, an SSC CHSL-style mock test with auto-scoring, and a
-saved-notes tab. Runs on Google Gemini's free API tier — no payment, no card.
+A study agent web app for UPSC, SSC CHSL, BA English, and anything else —
+chat, a current-affairs digest, an SSC CHSL-style mock test with
+auto-scoring, and a saved-notes tab. Runs on Groq's free, fast inference API.
 
 ## How it's built
 - `public/` — the website (HTML, CSS, JS) that runs in the browser
-- `api/chat.js` — a small server function that holds your Gemini API key and
-  talks to Gemini on the app's behalf (your key never reaches the browser)
+- `api/chat.js` — a small server function that holds your Groq API key and
+  talks to Groq on the app's behalf (your key never reaches the browser)
 
 ## Deploy it — step by step (no coding needed, no cost)
 
-### 1. Get a free Gemini API key
-1. Go to **aistudio.google.com** → sign in with a Google account
-2. Click **Get API key** (left sidebar) → **Create API key**
-3. Copy the key — no billing setup required for the free tier
+### 1. Get a free Groq API key
+1. Go to **console.groq.com** → sign up (no card required)
+2. Go to **API Keys** → **Create API Key**
+3. Copy the key
+
+### 1b. Get a free Tavily API key (for live web search)
+1. Go to **tavily.com** → sign up (no card required)
+2. Copy your API key from the dashboard — free tier gives 1,000 searches/month
 
 ### 2. Create a GitHub account and upload this project
-1. Go to **github.com** → **Sign up** (free)
-2. Click the **+** icon → **New repository** → name it `prahari-agent` →
-   keep it **Public** → **Create repository**
-3. Click **uploading an existing file**
-4. Unzip this project on your device, then drag in the *contents* of the
-   `prahari-app` folder (`public/`, `api/`, `README.md`, `package.json`,
-   `vercel.json`) — not the zip, not a wrapping outer folder
-5. Click **Commit changes**
+1. Go to **github.com** → sign up (free)
+2. New repository → name it `prahari-agent` → Public → Create
+3. Upload the contents of this project (`public/`, `api/`, `README.md`,
+   `package.json`) → Commit
 
 ### 3. Deploy on Vercel (free)
-1. Go to **vercel.com** → **Sign up** → **Continue with GitHub**
-2. **Add New → Project** → select `prahari-agent` → **Import**
-3. Before deploying, open **Environment Variables** and add:
-   - Name: `GEMINI_API_KEY`
+1. Go to **vercel.com** → sign up with GitHub
+2. Add New → Project → import `prahari-agent`
+3. Add environment variable:
+   - Name: `GROQ_API_KEY`
    - Value: (the key from Step 1)
-4. Click **Deploy** — about a minute
-5. You get a live link like `prahari-agent.vercel.app` — that's your site
+   - Name: `TAVILY_API_KEY`
+   - Value: (the key from Step 1b)
+4. Deploy
 
 ### 4. Use it
-Open the link on your phone or laptop. On mobile, use "Add to Home Screen"
-so it behaves like an app.
+Open your live link. Add it to your phone's home screen for one-tap access.
 
 ## Cost
-₹0. Gemini's free tier has daily usage limits, but they're generous enough
-for personal study use. If you ever hit a limit, just wait for it to reset
-(resets daily) rather than needing to pay.
+₹0. Groq's free tier is generous — far higher daily limits than most free AI
+APIs, no card required.
+
+## What's different from the Gemini version
+- Live web search is back — powered by Tavily instead of Google. Toggle
+  "🔎 Search the web" in Chat before sending a question, and the Current
+  Affairs digest always uses it automatically.
+- Fast/Deep toggle now switches between two different model sizes
+  (Llama 3.1 8B for Fast, Llama 3.3 70B for Deep) instead of a thinking-depth
+  setting.
 
 ## Changing the agent's behaviour
-Open `public/script.js` and edit the `SYSTEM_PROMPT` text at the top — this
-is where the agent's instructions, your context, and its rules live.
+Open `public/script.js` and edit the `SYSTEM_PROMPT` text at the top.
