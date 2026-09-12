@@ -55,11 +55,11 @@ document.getElementById('search-toggle').addEventListener('click', (e) => {
 // ---------- streaming API call ----------
 // Streams the reply and calls onChunk(partialTextSoFar) as it arrives.
 // Resolves with the full final text once the stream ends.
-async function streamAgent(messages, system = SYSTEM_PROMPT, onChunk = null, mode = null, search = null){
+async function streamAgent(messages, system = SYSTEM_PROMPT, onChunk = null, mode = null, search = null, maxTokens = null){
   const res = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, system, mode: mode || thinkingMode, search: search !== null ? search : searchEnabled })
+    body: JSON.stringify({ messages, system, mode: mode || thinkingMode, search: search !== null ? search : searchEnabled, maxTokens })
   });
 
   if(!res.ok){
@@ -95,6 +95,32 @@ async function streamAgent(messages, system = SYSTEM_PROMPT, onChunk = null, mod
     }
   }
   return fullText;
+}
+
+// Splits a "### Thinking" / "### Answer" structured reply and renders the
+// Thinking part as a distinct, collapsible box separate from the answer.
+function splitThinking(text){
+  const thinkMatch = text.match(/^#{1,4}\s*Thinking:?\s*$/im);
+  if(!thinkMatch) return { thinking: null, answer: text };
+  const thinkStart = thinkMatch.index + thinkMatch[0].length;
+  const rest = text.slice(thinkStart);
+  const answerMatch = rest.match(/^#{1,4}\s*Answer:?\s*$/im);
+  if(!answerMatch){
+    return { thinking: rest.trim(), answer: '' };
+  }
+  const answerStart = thinkStart + answerMatch.index + answerMatch[0].length;
+  return {
+    thinking: text.slice(thinkStart, thinkStart + answerMatch.index).trim(),
+    answer: text.slice(answerStart).trim()
+  };
+}
+
+function renderWithThinking(text){
+  const { thinking, answer } = splitThinking(text);
+  if(thinking === null) return renderMarkdown(text);
+  let html = `<details class="thinking-box" open><summary>💭 Thinking</summary>${renderMarkdown(thinking)}</details>`;
+  if(answer) html += renderMarkdown(answer);
+  return html;
 }
 
 // ---------- tiny markdown renderer (bold, headers, bullets) ----------
@@ -147,7 +173,7 @@ function addStaticMessage(role, text){
   label.textContent = role === 'user' ? 'You' : 'Prahari';
   div.appendChild(label);
   const body = document.createElement('span');
-  if(role === 'agent'){ body.innerHTML = renderMarkdown(text); }
+  if(role === 'agent'){ body.innerHTML = renderWithThinking(text); }
   else { body.textContent = text; }
   div.appendChild(body);
   thread.appendChild(div);
@@ -190,11 +216,11 @@ async function sendChat(text){
 
   try{
     const fullText = await streamAgent(chatHistory, SYSTEM_PROMPT, (partial) => {
-      body.innerHTML = renderMarkdown(partial);
+      body.innerHTML = renderWithThinking(partial);
       thread.scrollTop = thread.scrollHeight;
     });
     const finalText = fullText || "I couldn't generate a reply — try again.";
-    body.innerHTML = renderMarkdown(finalText);
+    body.innerHTML = renderWithThinking(finalText);
     chatHistory.push({ role: 'assistant', content: finalText });
     addSaveButton(container, () => finalText);
   }catch(err){
@@ -225,7 +251,7 @@ async function generateDigest(kind){
   document.getElementById('digest-wb').disabled = true;
   try{
     await streamAgent([{ role: 'user', content: prompt }], SYSTEM_PROMPT, (partial) => {
-      digestOutput.innerHTML = renderMarkdown(partial);
+      digestOutput.innerHTML = renderWithThinking(partial);
     }, 'deep', true);
   }catch(err){
     digestOutput.innerHTML = `<p class="empty-state">${err.message}</p>`;
@@ -240,55 +266,107 @@ document.getElementById('digest-wb').addEventListener('click', () => generateDig
 // ---------- MOCK TEST ----------
 const mockOutput = document.getElementById('mock-output');
 const mockGenerateBtn = document.getElementById('mock-generate');
+const mockSundayBtn = document.getElementById('mock-sunday');
 
-mockGenerateBtn.addEventListener('click', async () => {
-  const count = document.getElementById('mock-count').value;
-  mockOutput.innerHTML = '<p class="empty-state">Generating your mock set…</p>';
-  mockGenerateBtn.disabled = true;
-  const prompt = `Generate ${count} SSC CHSL-level practice MCQs as self-study practice material (clearly not real exam questions). Respond ONLY with valid JSON, no markdown fences, no preamble, in this exact shape:
-{"questions":[{"question":"...","options":["A text","B text","C text","D text"],"answer_index":0,"explanation":"..."}]}`;
+function tokenBudgetFor(count){
+  return Math.min(32000, count * 260 + 1000);
+}
+
+function buildMockPrompt(count, difficultyLabel){
+  return `Generate ${count} SSC CHSL-level practice MCQs as self-study practice material (clearly not real exam questions). Difficulty level: ${difficultyLabel}. Write each question and its options and explanation in BOTH English and Bengali. Respond ONLY with valid JSON, no markdown fences, no preamble, in this exact shape:
+{"questions":[{"question_en":"...","question_bn":"...","options_en":["A","B","C","D"],"options_bn":["A","B","C","D"],"answer_index":0,"explanation_en":"...","explanation_bn":"..."}]}`;
+}
+
+async function generateOneSet(count, difficultyLabel, targetContainer, setLabel){
+  const statusEl = document.createElement('p');
+  statusEl.className = 'empty-state';
+  statusEl.textContent = setLabel ? `Generating ${setLabel}…` : 'Generating your mock set…';
+  targetContainer.appendChild(statusEl);
+
   try{
-    const raw = await streamAgent([{ role: 'user', content: prompt }], SYSTEM_PROMPT, (partial) => {
-      mockOutput.innerHTML = `<p class="empty-state">Generating your mock set…</p><pre style="white-space:pre-wrap;font-size:12px;color:var(--ink-soft);">${partial.slice(-600)}</pre>`;
-    });
+    const raw = await streamAgent(
+      [{ role: 'user', content: buildMockPrompt(count, difficultyLabel) }],
+      SYSTEM_PROMPT,
+      (partial) => { statusEl.textContent = (setLabel ? `Generating ${setLabel}… ` : 'Generating… ') + `(${partial.length} chars so far)`; },
+      'deep',
+      false,
+      tokenBudgetFor(count)
+    );
+    statusEl.remove();
     const clean = raw.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean);
-    renderQuiz(parsed.questions || []);
+    renderQuiz(parsed.questions || [], targetContainer, setLabel);
   }catch(err){
-    mockOutput.innerHTML = `<p class="empty-state">Couldn't generate the mock set: ${err.message}</p>`;
-  }finally{
-    mockGenerateBtn.disabled = false;
+    statusEl.textContent = `Couldn't generate ${setLabel || 'the mock set'}: ${err.message}`;
   }
+}
+
+mockGenerateBtn.addEventListener('click', async () => {
+  const count = Number(document.getElementById('mock-count').value);
+  mockOutput.innerHTML = '';
+  mockGenerateBtn.disabled = true;
+  mockSundayBtn.disabled = true;
+  await generateOneSet(count, 'standard SSC CHSL level', mockOutput, null);
+  mockGenerateBtn.disabled = false;
+  mockSundayBtn.disabled = false;
 });
 
-function renderQuiz(questions){
+mockSundayBtn.addEventListener('click', async () => {
+  const count = Number(document.getElementById('mock-count').value);
   mockOutput.innerHTML = '';
+  mockGenerateBtn.disabled = true;
+  mockSundayBtn.disabled = true;
+  const difficulties = [
+    'easy — warm-up level',
+    'easy-medium',
+    'medium',
+    'medium-hard',
+    'hardest — maximum SSC CHSL difficulty'
+  ];
+  for(let i = 0; i < difficulties.length; i++){
+    const header = document.createElement('h3');
+    header.textContent = `Set ${i + 1} of 5 — ${difficulties[i]}`;
+    header.style.marginTop = i === 0 ? '0' : '28px';
+    mockOutput.appendChild(header);
+    await generateOneSet(count, difficulties[i], mockOutput, `Set ${i + 1}`);
+  }
+  mockGenerateBtn.disabled = false;
+  mockSundayBtn.disabled = false;
+});
+
+function renderQuiz(questions, container, setLabel){
   if(!questions.length){
-    mockOutput.innerHTML = '<p class="empty-state">No questions came back — try again.</p>';
+    const p = document.createElement('p');
+    p.className = 'empty-state';
+    p.textContent = `No questions came back${setLabel ? ' for ' + setLabel : ''} — try again.`;
+    container.appendChild(p);
     return;
   }
   const answers = new Array(questions.length).fill(null);
+  const setWrap = document.createElement('div');
 
   questions.forEach((q, qi) => {
     const card = document.createElement('div');
     card.className = 'q-card';
     const qText = document.createElement('p');
     qText.className = 'q-text';
-    qText.textContent = `${qi + 1}. ${q.question}`;
+    qText.innerHTML = `${qi + 1}. ${q.question_en || q.question}<br><span style="font-weight:400;color:var(--ink-soft);">${q.question_bn || ''}</span>`;
     card.appendChild(qText);
-    q.options.forEach((opt, oi) => {
+    const optionsEn = q.options_en || q.options || [];
+    const optionsBn = q.options_bn || [];
+    optionsEn.forEach((opt, oi) => {
       const label = document.createElement('label');
       const radio = document.createElement('input');
       radio.type = 'radio';
-      radio.name = 'q' + qi;
+      radio.name = 'q' + setLabel + qi + Math.random();
       radio.value = oi;
       radio.onchange = () => { answers[qi] = oi; };
       label.appendChild(radio);
-      label.append(' ' + opt);
+      label.append(' ' + opt + (optionsBn[oi] ? ` (${optionsBn[oi]})` : ''));
       card.appendChild(label);
     });
     card.dataset.index = qi;
-    mockOutput.appendChild(card);
+    setWrap.appendChild(card);
   });
 
   const checkBtn = document.createElement('button');
@@ -297,7 +375,7 @@ function renderQuiz(questions){
   checkBtn.style.marginTop = '4px';
   checkBtn.onclick = () => {
     let score = 0;
-    document.querySelectorAll('.q-card').forEach((card) => {
+    setWrap.querySelectorAll('.q-card').forEach((card) => {
       const qi = Number(card.dataset.index);
       const q = questions[qi];
       const labels = card.querySelectorAll('label');
@@ -311,16 +389,17 @@ function renderQuiz(questions){
       expl.style.fontSize = '13px';
       expl.style.marginTop = '8px';
       expl.style.color = 'var(--ink-soft)';
-      expl.textContent = q.explanation;
+      expl.innerHTML = `${q.explanation_en || q.explanation || ''}<br>${q.explanation_bn || ''}`;
       card.appendChild(expl);
     });
     const banner = document.createElement('div');
     banner.className = 'score-banner';
-    banner.textContent = `Score: ${score} / ${questions.length} (SSC CHSL marking: +1 correct, -0.50 wrong)`;
-    mockOutput.prepend(banner);
+    banner.textContent = `${setLabel ? setLabel + ' — ' : ''}Score: ${score} / ${questions.length} (SSC CHSL marking: +1 correct, -0.50 wrong)`;
+    setWrap.prepend(banner);
     checkBtn.disabled = true;
   };
-  mockOutput.appendChild(checkBtn);
+  setWrap.appendChild(checkBtn);
+  container.appendChild(setWrap);
 }
 
 // ---------- SAVED (localStorage) ----------
@@ -362,5 +441,5 @@ function renderSaved(){
     item.appendChild(body);
     list.appendChild(item);
   });
-                      }
-
+   }
+                               
