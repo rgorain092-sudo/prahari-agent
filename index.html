@@ -27,6 +27,9 @@
       <button class="mode-btn active" data-mode="fast">⚡ Fast</button>
       <button class="mode-btn" data-mode="deep">🧠 Deep</button>
     </div>
+    <div class="mode-toggle" id="search-toggle-row">
+      <button class="mode-btn search-btn" id="search-toggle">🔎 Search the web</button>
+    </div>
     <div class="chips">
       <button class="chip" data-prompt="Explain a UPSC Mains-relevant concept from Indian Polity in simple terms, then in exam depth.">Concept doubt</button>
       <button class="chip" data-prompt="Give me 5 practice MCQs at SSC CHSL level on a random relevant topic. Clearly label them as self-study practice material, not real exam questions.">Quick MCQs</button>
@@ -56,13 +59,15 @@
     <div class="mock-controls">
       <label for="mock-count">Questions</label>
       <select id="mock-count">
-        <option value="5">5</option>
-        <option value="10" selected>10</option>
-        <option value="20">20</option>
+        <option value="10">10</option>
+        <option value="25">25</option>
+        <option value="50">50</option>
+        <option value="100" selected>100</option>
       </select>
-      <button class="primary-btn" id="mock-generate">Generate SSC CHSL mock set</button>
+      <button class="primary-btn" id="mock-generate">Generate mock set</button>
+      <button class="primary-btn" id="mock-sunday">Sunday: 5 sets (rising difficulty)</button>
     </div>
-    <p class="notice">Practice material written by Prahari — not real, leaked, or predicted exam questions.</p>
+    <p class="notice">Bilingual (English + Bengali) · SSC CHSL marking (+1 correct, −0.50 wrong) · Practice material written by Prahari — not real, leaked, or predicted exam questions.</p>
     <div id="mock-output"></div>
   </section>
 
