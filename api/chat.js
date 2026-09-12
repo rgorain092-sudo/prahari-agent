@@ -12,7 +12,8 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const { messages, system } = req.body;
+    const { messages, system, mode } = req.body;
+    const thinkingLevel = mode === 'deep' ? 'medium' : 'minimal';
 
     const contents = (messages || []).map(m => ({
       role: m.role === 'assistant' ? 'model' : 'user',
@@ -27,9 +28,10 @@ module.exports = async (req, res) => {
         body: JSON.stringify({
           system_instruction: { parts: [{ text: system }] },
           contents,
+          tools: [{ google_search: {} }],
           generationConfig: {
             maxOutputTokens: 8192,
-            thinkingConfig: { thinkingLevel: 'minimal' }
+            thinkingConfig: { thinkingLevel }
           }
         })
       }
@@ -60,4 +62,3 @@ module.exports = async (req, res) => {
     }
   }
 };
-                            
