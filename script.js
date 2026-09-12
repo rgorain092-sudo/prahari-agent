@@ -66,6 +66,29 @@ async function streamAgent(messages, system = SYSTEM_PROMPT, onChunk = null){
   return fullText;
 }
 
+// ---------- tiny markdown renderer (bold, headers, bullets) ----------
+function renderMarkdown(text){
+  let html = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  html = html.replace(/^#### (.*)$/gm, '<h5>$1</h5>');
+  html = html.replace(/^### (.*)$/gm, '<h4>$1</h4>');
+  html = html.replace(/^## (.*)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^# (.*)$/gm, '<h2>$1</h2>');
+
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+
+  // group consecutive "- " / "* " lines into a <ul>
+  html = html.replace(/(?:^|\n)[*-] (.*)(?=\n|$)/g, (m, item) => '\n<li>' + item + '</li>');
+  html = html.replace(/(<li>[\s\S]*?<\/li>\n?)+/g, (block) => '<ul>' + block.replace(/\n/g, '') + '</ul>');
+
+  html = html.replace(/\n/g, '<br>');
+  return html;
+}
+
 // ---------- tabs ----------
 document.getElementById('tabs').addEventListener('click', (e) => {
   const btn = e.target.closest('.tab');
@@ -93,7 +116,8 @@ function addStaticMessage(role, text){
   label.textContent = role === 'user' ? 'You' : 'Prahari';
   div.appendChild(label);
   const body = document.createElement('span');
-  body.textContent = text;
+  if(role === 'agent'){ body.innerHTML = renderMarkdown(text); }
+  else { body.textContent = text; }
   div.appendChild(body);
   thread.appendChild(div);
   thread.scrollTop = thread.scrollHeight;
@@ -135,11 +159,11 @@ async function sendChat(text){
 
   try{
     const fullText = await streamAgent(chatHistory, SYSTEM_PROMPT, (partial) => {
-      body.textContent = partial;
+      body.innerHTML = renderMarkdown(partial);
       thread.scrollTop = thread.scrollHeight;
     });
     const finalText = fullText || "I couldn't generate a reply — try again.";
-    body.textContent = finalText;
+    body.innerHTML = renderMarkdown(finalText);
     chatHistory.push({ role: 'assistant', content: finalText });
     addSaveButton(container, () => finalText);
   }catch(err){
@@ -170,7 +194,7 @@ async function generateDigest(kind){
   document.getElementById('digest-wb').disabled = true;
   try{
     await streamAgent([{ role: 'user', content: prompt }], SYSTEM_PROMPT, (partial) => {
-      digestOutput.textContent = partial;
+      digestOutput.innerHTML = renderMarkdown(partial);
     });
   }catch(err){
     digestOutput.innerHTML = `<p class="empty-state">${err.message}</p>`;
@@ -303,7 +327,7 @@ function renderSaved(){
     meta.appendChild(del);
     item.appendChild(meta);
     const body = document.createElement('div');
-    body.textContent = note.text;
+    body.innerHTML = renderMarkdown(note.text);
     item.appendChild(body);
     list.appendChild(item);
   });
