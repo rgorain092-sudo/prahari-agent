@@ -5,7 +5,6 @@ const GEMINI_MODEL = 'gemini-3.8-flash';
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
 // Gemini 3.8 Flash supports only these thinking levels.
-// 'minimal' is invalid and will cause a 400 error.
 const THINKING_LEVELS = {
   deep: 'high',
   normal: 'medium',
@@ -26,9 +25,7 @@ module.exports = async (req, res) => {
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({
-      error: 'Server is missing GEMINI_API_KEY.',
-    });
+    return res.status(500).json({ error: 'Server is missing GEMINI_API_KEY.' });
   }
 
   let body;
@@ -44,13 +41,6 @@ module.exports = async (req, res) => {
     return res.status(400).json({ error: '`messages` must be a non-empty array' });
   }
 
-  try {
-    if (Buffer.byteLength(JSON.stringify(body)) > MAX_BODY_BYTES) {
-      return res.status(413).json({ error: 'Payload too large' });
-    }
-  } catch {}
-
-  // Build conversation content
   const contents = messages
     .filter((m) => m && typeof m.content === 'string' && m.content.trim())
     .map((m) => ({
@@ -64,16 +54,15 @@ module.exports = async (req, res) => {
 
   const thinkingLevel = THINKING_LEVELS[mode] || THINKING_LEVELS.normal;
 
-  // ⚠️ KEY FIX: The format for the google_search tool
-  // WRONG: { googleSearch: {} } or { google_search_retrieval: {} }
-  // CORRECT: { google_search: {} } (snake_case, no extra 'type' field)
+  // ⚠️ KEY FIX: The format for the google_search tool.
+  // The correct format is: tools: [{ google_search: {} }]
+  // This enables live web search grounding.
   const payload = {
     contents,
     generationConfig: {
       maxOutputTokens: 8192,
       thinkingConfig: { thinkingLevel },
     },
-    // Live web search: use snake_case 'google_search'
     tools: [{ google_search: {} }],
   };
 
