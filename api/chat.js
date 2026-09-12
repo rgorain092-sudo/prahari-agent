@@ -13,7 +13,7 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const { messages, system, mode, search } = req.body;
+    const { messages, system, mode, search, maxTokens } = req.body;
 
     let effectiveSystem = system;
 
@@ -49,7 +49,7 @@ module.exports = async (req, res) => {
       }
     }
 
-    const model = mode === 'deep' ? 'llama-3.3-70b-versatile' : 'llama-3.1-8b-instant';
+    const model = mode === 'deep' ? 'openai/gpt-oss-120b' : 'openai/gpt-oss-20b';
 
     const chatMessages = [
       { role: 'system', content: effectiveSystem },
@@ -66,7 +66,7 @@ module.exports = async (req, res) => {
         model,
         messages: chatMessages,
         stream: true,
-        max_tokens: 8192
+        max_tokens: maxTokens || 8192
       })
     });
 
@@ -94,4 +94,3 @@ module.exports = async (req, res) => {
     }
   }
 };
-                
