@@ -166,6 +166,30 @@ select{
 }
 .empty-state{ color:var(--ink-soft); font-style:italic; padding:16px; }
 
+.quiz-progress{
+  font-size:13px; font-weight:600; color:#fff; background:rgba(255,255,255,0.15);
+  display:inline-block; padding:5px 12px; border-radius:999px; margin-bottom:10px;
+}
+.option-btn{
+  display:block; width:100%; text-align:left; padding:10px 12px; margin-top:6px;
+  border-radius:8px; border:1px solid var(--rule); background:#fff; cursor:pointer;
+  font-family:'IBM Plex Sans',sans-serif; font-size:14px; color:var(--ink);
+}
+.option-btn:hover{ background:var(--accent-soft); border-color:var(--accent); }
+.option-btn:active{ background:var(--accent); color:#fff; }
+.option-dot{
+  display:inline-block; width:10px; height:10px; border-radius:50%;
+  border:2px solid var(--accent); margin-right:8px;
+}
+.option-bn{ color:var(--ink-soft); }
+.quiz-controls{ margin-top:12px; }
+.skip-btn{ background:linear-gradient(135deg, #64748B, #94A3B8); box-shadow:none; }
+.review-row{
+  padding:6px 9px; border-radius:6px; font-size:13.5px; margin-bottom:4px;
+}
+.review-row.correct{ background:#DCFCE7; color:var(--good); font-weight:600; }
+.review-row.incorrect{ background:#FEE2E2; color:var(--bad); }
+
 /* MOCK quiz rendering */
 .q-card{
   background: var(--panel-solid); border:1px solid var(--rule); border-left:3px solid var(--amber);
@@ -229,5 +253,4 @@ select{
 .saved-item .date{ font-size:11px; color:var(--ink-soft); }
 .delete-btn{
   background:none; border:none; color:var(--accent-2); cursor:pointer; font-size:12px; text-decoration:underline;
-  }
-  
+        }
