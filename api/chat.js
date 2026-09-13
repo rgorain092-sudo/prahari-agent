@@ -49,7 +49,7 @@ module.exports = async (req, res) => {
       }
     }
 
-    const model = mode === 'deep' ? 'llama-3.1-8b-instant' : 'llama-3.1-8b-instant';
+    const model = mode === 'deep' ? 'openai/gpt-oss-20b' : 'openai/gpt-oss-120b';
 
     const chatMessages = [
       { role: 'system', content: effectiveSystem },
