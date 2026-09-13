@@ -273,8 +273,11 @@ function tokenBudgetFor(count){
 }
 
 function buildMockPrompt(count, difficultyLabel){
-  return `Generate ${count} SSC CHSL-level practice MCQs as self-study practice material (clearly not real exam questions). Difficulty level: ${difficultyLabel}. Write each question and its options and explanation in BOTH English and Bengali. Respond ONLY with valid JSON, no markdown fences, no preamble, in this exact shape:
-{"questions":[{"question_en":"...","question_bn":"...","options_en":["A","B","C","D"],"options_bn":["A","B","C","D"],"answer_index":0,"explanation_en":"...","explanation_bn":"..."}]}`;
+  return `Generate ${count} SSC CHSL-level practice MCQs as self-study practice material (clearly not real exam questions). Difficulty level: ${difficultyLabel}. Regardless of level, phrase and structure every question like a genuine SSC CHSL Previous Year Question (PYQ) — matching the real toughness, trickiness, and exact phrasing style seen in actual past SSC CHSL papers, not simplified textbook-style questions. Distribute questions roughly evenly across these four SSC CHSL sections: Math (Quantitative Aptitude), Reasoning (General Intelligence), English (Language), and GK/GS (General Knowledge/General Awareness) — tag each question with which section it belongs to. Write each question and its options and explanation in BOTH English and Bengali.
+IMPORTANT: explanations must be final and clean — 1-2 confident sentences per language. Do NOT show your reasoning process, self-corrections, or words like "wait", "correction", "actually let me reconsider" — work out the right answer silently and only write the finished explanation.
+Respond ONLY with valid JSON, no markdown fences, no preamble, in this exact shape:
+{"questions":[{"category":"Math","question_en":"...","question_bn":"...","options_en":["A","B","C","D"],"options_bn":["A","B","C","D"],"answer_index":0,"explanation_en":"...","explanation_bn":"..."}]}
+(category must be exactly one of: "Math", "Reasoning", "English", "GK/GS")`;
 }
 
 async function generateOneSet(count, difficultyLabel, targetContainer, setLabel){
@@ -306,7 +309,7 @@ mockGenerateBtn.addEventListener('click', async () => {
   mockOutput.innerHTML = '';
   mockGenerateBtn.disabled = true;
   mockSundayBtn.disabled = true;
-  await generateOneSet(count, 'standard SSC CHSL level', mockOutput, null);
+  await generateOneSet(count, 'PYQ-level difficulty, matching real past SSC CHSL exam toughness', mockOutput, null);
   mockGenerateBtn.disabled = false;
   mockSundayBtn.disabled = false;
 });
@@ -342,104 +345,109 @@ function renderQuiz(questions, container, setLabel){
     container.appendChild(p);
     return;
   }
-  const answers = new Array(questions.length).fill(null);
-  const setWrap = document.createElement('div');
 
-  questions.forEach((q, qi) => {
+  const wrap = document.createElement('div');
+  wrap.className = 'quiz-wrap';
+  container.appendChild(wrap);
+
+  const answers = new Array(questions.length).fill(null); // null = skipped, else option index
+  let current = 0;
+  const quizStartTime = Date.now();
+
+  function renderStep(){
+    wrap.innerHTML = '';
+
+    if(current >= questions.length){
+      renderSummary();
+      return;
+    }
+
+    const q = questions[current];
+
+    const progress = document.createElement('div');
+    progress.className = 'quiz-progress';
+    progress.textContent = `${setLabel ? setLabel + ' — ' : ''}Question ${current + 1} of ${questions.length}`;
+    wrap.appendChild(progress);
+
     const card = document.createElement('div');
     card.className = 'q-card';
     const qText = document.createElement('p');
     qText.className = 'q-text';
-    qText.innerHTML = `${qi + 1}. ${q.question_en || q.question}<br><span style="font-weight:400;color:var(--ink-soft);">${q.question_bn || ''}</span>`;
+    qText.innerHTML = `${q.question_en || q.question}<br><span style="font-weight:400;color:var(--ink-soft);">${q.question_bn || ''}</span>`;
     card.appendChild(qText);
+
     const optionsEn = q.options_en || q.options || [];
     const optionsBn = q.options_bn || [];
     optionsEn.forEach((opt, oi) => {
-      const label = document.createElement('label');
-      const radio = document.createElement('input');
-      radio.type = 'radio';
-      radio.name = 'q' + setLabel + qi + Math.random();
-      radio.value = oi;
-      radio.onchange = () => { answers[qi] = oi; };
-      label.appendChild(radio);
-      label.append(' ' + opt + (optionsBn[oi] ? ` (${optionsBn[oi]})` : ''));
-      card.appendChild(label);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'option-btn';
+      btn.innerHTML = `<span class="option-dot"></span> ${opt}${optionsBn[oi] ? ` <span class="option-bn">(${optionsBn[oi]})</span>` : ''}`;
+      btn.onclick = () => {
+        answers[current] = oi;
+        current += 1;
+        renderStep();
+      };
+      card.appendChild(btn);
     });
-    card.dataset.index = qi;
-    setWrap.appendChild(card);
-  });
 
-  const checkBtn = document.createElement('button');
-  checkBtn.className = 'primary-btn';
-  checkBtn.textContent = 'Check answers';
-  checkBtn.style.marginTop = '4px';
-  checkBtn.onclick = () => {
+    wrap.appendChild(card);
+
+    const controls = document.createElement('div');
+    controls.className = 'quiz-controls';
+    const skipBtn = document.createElement('button');
+    skipBtn.type = 'button';
+    skipBtn.className = 'primary-btn skip-btn';
+    skipBtn.textContent = 'Skip question';
+    skipBtn.onclick = () => {
+      answers[current] = null;
+      current += 1;
+      renderStep();
+    };
+    controls.appendChild(skipBtn);
+    wrap.appendChild(controls);
+
+    wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function renderSummary(){
+    const quizEndTime = Date.now();
+    const elapsedSec = Math.round((quizEndTime - quizStartTime) / 1000);
+    const mm = Math.floor(elapsedSec / 60);
+    const ss = elapsedSec % 60;
+    const timeStr = `${mm}m ${ss.toString().padStart(2, '0')}s`;
+
     let score = 0;
-    setWrap.querySelectorAll('.q-card').forEach((card) => {
-      const qi = Number(card.dataset.index);
-      const q = questions[qi];
-      const labels = card.querySelectorAll('label');
-      labels.forEach((label, oi) => {
-        if(oi === q.answer_index) label.classList.add('correct');
-        else if(answers[qi] === oi) label.classList.add('incorrect');
-      });
-      if(answers[qi] === q.answer_index) score += 1;
-      else if(answers[qi] !== null) score -= 0.5;
-      const expl = document.createElement('p');
-      expl.style.fontSize = '13px';
-      expl.style.marginTop = '8px';
-      expl.style.color = 'var(--ink-soft)';
-      expl.innerHTML = `${q.explanation_en || q.explanation || ''}<br>${q.explanation_bn || ''}`;
-      card.appendChild(expl);
+    let attempted = 0;
+    const categoryStats = {}; // { Math: {correct, attempted, total} }
+
+    questions.forEach((q, qi) => {
+      const cat = q.category || 'General';
+      if(!categoryStats[cat]) categoryStats[cat] = { correct: 0, attempted: 0, total: 0 };
+      categoryStats[cat].total += 1;
+
+      if(answers[qi] === null) return;
+      attempted += 1;
+      categoryStats[cat].attempted += 1;
+      if(answers[qi] === q.answer_index){ score += 1; categoryStats[cat].correct += 1; }
+      else score -= 0.5;
     });
+
     const banner = document.createElement('div');
     banner.className = 'score-banner';
-    banner.textContent = `${setLabel ? setLabel + ' — ' : ''}Score: ${score} / ${questions.length} (SSC CHSL marking: +1 correct, -0.50 wrong)`;
-    setWrap.prepend(banner);
-    checkBtn.disabled = true;
-  };
-  setWrap.appendChild(checkBtn);
-  container.appendChild(setWrap);
-}
+    banner.textContent = `${setLabel ? setLabel + ' — ' : ''}Score: ${score} / ${questions.length} · Attempted ${attempted}/${questions.length} · Time: ${timeStr} (SSC CHSL marking: +1 correct, −0.50 wrong)`;
+    wrap.appendChild(banner);
 
-// ---------- SAVED (localStorage) ----------
-function saveNote(text){
-  const notes = JSON.parse(localStorage.getItem('prahari_saved') || '[]');
-  notes.unshift({ text, date: new Date().toLocaleString() });
-  localStorage.setItem('prahari_saved', JSON.stringify(notes));
-}
-
-function renderSaved(){
-  const list = document.getElementById('saved-list');
-  const notes = JSON.parse(localStorage.getItem('prahari_saved') || '[]');
-  if(!notes.length){
-    list.innerHTML = '<p class="empty-state">Nothing saved yet — tap "Save" under any chat reply to keep it here.</p>';
-    return;
-  }
-  list.innerHTML = '';
-  notes.forEach((note, i) => {
-    const item = document.createElement('div');
-    item.className = 'saved-item';
-    const meta = document.createElement('div');
-    meta.className = 'meta';
-    const date = document.createElement('span');
-    date.className = 'date';
-    date.textContent = note.date;
-    const del = document.createElement('button');
-    del.className = 'delete-btn';
-    del.textContent = 'Delete';
-    del.onclick = () => {
-      notes.splice(i, 1);
-      localStorage.setItem('prahari_saved', JSON.stringify(notes));
-      renderSaved();
-    };
-    meta.appendChild(date);
-    meta.appendChild(del);
-    item.appendChild(meta);
-    const body = document.createElement('div');
-    body.innerHTML = renderMarkdown(note.text);
-    item.appendChild(body);
-    list.appendChild(item);
-  });
-   }
-                               
+    // Category breakdown
+    const catBox = document.createElement('div');
+    catBox.className = 'q-card';
+    const catTitle = document.createElement('p');
+    catTitle.className = 'q-text';
+    catTitle.textContent = 'Section-wise breakdown';
+    catBox.appendChild(catTitle);
+    let weakestCat = null;
+    let weakestAccuracy = 2; // above max possible ratio, so first real value replaces it
+    Object.entries(categoryStats).forEach(([cat, s]) => {
+      const row = document.createElement('p');
+      row.style.fontSize = '14px';
+      row.style.margin = '4px 0';
