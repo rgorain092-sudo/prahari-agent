@@ -49,7 +49,7 @@ module.exports = async (req, res) => {
       }
     }
 
-    const model = mode === 'deep' ? 'llama-3.3-70b-versatile' : 'llama-3.3-70b-versatile';
+    const model = mode === 'deep' ? 'llama-3.1-8b-instant' : 'llama-3.3-70b-versatile';
 
     const chatMessages = [
       { role: 'system', content: effectiveSystem },
